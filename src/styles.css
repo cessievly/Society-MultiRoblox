@@ -260,29 +260,6 @@ button:focus-visible,button:focus,.nav-item:focus,.nav-item:focus-visible,.tab-b
 .sr-input::placeholder{color:var(--t3)}
 
 /* custom dropdown */
-.cdd{position:relative;width:100%;flex-shrink:0}
-.cdd-trigger{display:flex;align-items:center;gap:8px;background:var(--s1);border:1px solid var(--bd);border-radius:var(--r2);padding:7px 10px;color:var(--t1);font-size:12.5px;font-family:'Inter',sans-serif;cursor:pointer;transition:border-color var(--dur) var(--smooth),box-shadow var(--dur) var(--smooth),background var(--dur) var(--smooth);-webkit-app-region:no-drag}
-.cdd-trigger:hover{border-color:var(--bd2);background:var(--s2)}
-.cdd-trigger.open{border-color:var(--ac);box-shadow:0 0 0 3px var(--ac2);background:var(--s1)}
-.cdd-label{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
-.cdd-badge{font-size:10px;font-weight:600;padding:1px 6px;border-radius:4px;background:var(--ac);color:#fff;flex-shrink:0}
-.cdd-badge.green{background:var(--gd);color:var(--green)}
-.cdd-badge.muted{background:var(--s4);color:var(--t2)}
-.cdd-arrow{font-size:16px;color:var(--t3);transition:transform var(--dur) var(--smooth);flex-shrink:0}
-.cdd-trigger.open .cdd-arrow{transform:rotate(180deg)}
-.cdd-menu{position:absolute;top:calc(100% + 5px);left:0;right:0;background:var(--s2);border:1px solid var(--bd);border-radius:var(--r2);overflow:hidden;z-index:500;opacity:0;transform:translateY(-6px) scale(0.97);pointer-events:none;transition:opacity 160ms var(--smooth),transform 180ms var(--spring);box-shadow:0 12px 36px rgba(0,0,0,.6)}
-.cdd-menu.open{opacity:1;transform:translateY(0) scale(1);pointer-events:all}
-.cdd-option{display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer;transition:background var(--dur) var(--smooth);border-bottom:1px solid var(--bd)}
-.cdd-option:last-child{border-bottom:none}
-.cdd-option:hover{background:var(--s3)}
-.cdd-option.selected{background:var(--ac2)}
-.cdd-opt-left{flex:1;display:flex;flex-direction:column;gap:2px}
-.cdd-opt-name{font-size:12.5px;font-weight:500;color:var(--t1)}
-.cdd-opt-desc{font-size:11px;color:var(--t3);line-height:1.4;font-weight:400}
-.cdd-option.selected .cdd-opt-name{color:var(--t1)}
-.cdd-option.selected .cdd-opt-desc{color:var(--t3)}
-.cdd-check{font-size:15px;color:var(--ac);flex-shrink:0;opacity:0;transition:opacity var(--dur) var(--smooth)}
-.cdd-option.selected .cdd-check{opacity:1}
 
 /* modals */
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity 200ms var(--smooth)}

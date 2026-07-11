@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, net, session, safeStorage } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, net, session } = require('electron');
 
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36';
 app.commandLine.appendSwitch('user-agent', CHROME_UA);
@@ -7,7 +7,6 @@ app.commandLine.appendSwitch('disable-features', 'IsolateOrigins,site-per-proces
 app.commandLine.appendArgument('--no-sandbox');
 const path = require('path');
 const fs = require('fs');
-const crypto = require('crypto');
 const https = require('https');
 const { spawn } = require('child_process');
 const os = require('os');
@@ -346,206 +345,11 @@ function loadSettings() {
 }
 function saveSettings(s) { fs.writeFileSync(settingsPath, JSON.stringify(s, null, 2), { mode: 0o600 }); }
 
-const SALT = 'multiroblox-v1-salt-2025';
-const ITERATIONS = 210_000;
-const KEY_LEN = 32;
-const DIGEST = 'sha512';
-
-// safeStorage encrypts with the OS keychain -- DPAPI on Windows, tied to the
-// logged-in user account. Unlike the device-key path, no key is ever written to
-// disk in plaintext, so this is the secure default when no passphrase is set.
-function safeStorageReady() {
-  try { return !!(safeStorage && safeStorage.isEncryptionAvailable()); } catch { return false; }
-}
-
-// Kept only so accounts encrypted by older builds (random key stored in
-// settings.json) still decrypt. New writes never use this path.
-function getOrCreateDeviceKey() {
-  const s = loadSettings();
-  if (s._deviceKey && s._deviceKey.length === 64) {
-    return Buffer.from(s._deviceKey, 'hex');
-  }
-  const key = crypto.randomBytes(KEY_LEN);
-  saveSettings({ ...s, _deviceKey: key.toString('hex') });
-  return key;
-}
-
-// Passphrase key derivation.
-// New writes use scrypt (memory-hard -> far stronger against GPU/ASIC cracking
-// than PBKDF2). N=2^15 costs ~32MB and <100ms, derived once and cached, so there
-// is no per-record or runtime cost. PBKDF2 is kept only to read data written by
-// older builds (the gcm:/cbc: formats), which migrates forward on the next save.
-const SCRYPT_PARAMS = { N: 65536, r: 8, p: 1, maxmem: 160 * 1024 * 1024 };
-function deriveScryptKey(p) { return crypto.scryptSync(p, SALT, KEY_LEN, SCRYPT_PARAMS); }
-function deriveLegacyKey(p) { return crypto.pbkdf2Sync(p, SALT, ITERATIONS, KEY_LEN, DIGEST); }
-
-let _cachedKey = null, _cachedLegacyKey = null, _sessionPass = null;
-
-// ---- Per-boot key session ----------------------------------------------------
-// Passphrase mode stores only a verifier in settings (never a usable key). The
-// unlocked passphrase is cached for the current OS boot session in a keychain-
-// wrapped file tagged with the boot id, so the app remembers it across app
-// restarts but forgets it after the computer reboots, prompting again next launch.
-const sessionPath = path.join(app.getPath('userData'), '.keysession');
-const VERIFY_TOKEN = 'multiroblox-verify-v1';
-function bootId() { return Math.round(Date.now() / 1000 - os.uptime()); }
-function passphraseMode() {
-  const s = loadSettings();
-  return !!(s.keyVerifier || s.customKeyEnc || (s.customKey && s.customKey.trim()));
-}
-function makeVerifier(pass) { return encryptGCM(VERIFY_TOKEN, deriveScryptKey(pass), 'gs'); }
-function verifyPass(pass) {
-  try {
-    const v = loadSettings().keyVerifier;
-    return !!v && decryptGCM(v, deriveScryptKey(pass), 'gs') === VERIFY_TOKEN;
-  } catch { return false; }
-}
-function writeSessionKey(pass) {
-  // No session caching: encryption key must be entered on every app launch
-}
-function readSessionKey() {
-  return null; // No session caching: encryption key must be entered on every app launch
-}
-function clearSessionKey() { try { fs.unlinkSync(sessionPath); } catch { } }
-
-// Runs once at startup: migrate older key formats to the verifier model, then try
-// to restore the key from this boot's session cache (silent unlock).
-function initEncryption() {
-  try {
-    const s = loadSettings();
-    if (!s.keyVerifier) {
-      let legacy = null;
-      if (s.customKeyEnc && safeStorageReady()) { try { legacy = safeStorage.decryptString(Buffer.from(s.customKeyEnc, 'base64')); } catch { } }
-      if (!legacy && s.customKey && s.customKey.trim()) legacy = s.customKey.trim();
-      if (legacy) {
-        const { customKey, customKeyEnc, ...rest } = s;
-        saveSettings({ ...rest, keyVerifier: makeVerifier(legacy) });
-        _sessionPass = legacy; writeSessionKey(legacy); // unlocked this boot; prompt after reboot
-        return;
-      }
-    }
-    if (passphraseMode()) {
-      const cached = readSessionKey();
-      if (cached && verifyPass(cached)) _sessionPass = cached;
-    }
-  } catch { }
-}
-function getStoredPassphrase() { return _sessionPass; }
-
-// Primary key: scrypt-derived passphrase key (when unlocked), or the OS/device
-// key in machine-bound mode. Returns null when passphrase mode is locked.
-function getEncryptionKey() {
-  if (_cachedKey) return _cachedKey;
-  if (_sessionPass) { _cachedKey = deriveScryptKey(_sessionPass); return _cachedKey; }
-  if (!passphraseMode()) { _cachedKey = getOrCreateDeviceKey(); return _cachedKey; }
-  return null; // locked
-}
-// Legacy PBKDF2 key, derived lazily only when an old gcm:/cbc: record is read.
-function getLegacyKey() {
-  if (_cachedLegacyKey) return _cachedLegacyKey;
-  if (_sessionPass) { _cachedLegacyKey = deriveLegacyKey(_sessionPass); return _cachedLegacyKey; }
-  if (!passphraseMode()) { _cachedLegacyKey = getOrCreateDeviceKey(); return _cachedLegacyKey; }
-  return null; // locked
-}
-function invalidateKeyCache() { _cachedKey = null; _cachedLegacyKey = null; }
-
-// Pre-derive the unlocked passphrase key off the main thread so the first decrypt
-// hits the cache instead of blocking on a ~340ms derive. No-op when locked or
-// machine-bound.
-function prewarmKey() {
-  try {
-    if (_cachedKey || !_sessionPass) return;
-    crypto.scrypt(_sessionPass, SALT, KEY_LEN, SCRYPT_PARAMS, (err, dk) => {
-      if (!err && dk && !_cachedKey) _cachedKey = dk;
-    });
-  } catch { }
-}
-
-// AES-256-GCM. `tag` carries the prefix so the reader knows which KDF produced
-// the key: gs: = scrypt (current), gcm: = legacy PBKDF2.
-function encryptGCM(p, k, tag) {
-  const iv = crypto.randomBytes(12), c = crypto.createCipheriv('aes-256-gcm', k, iv);
-  const enc = Buffer.concat([c.update(p, 'utf8'), c.final()]);
-  return tag + ':' + [iv.toString('base64'), c.getAuthTag().toString('base64'), enc.toString('base64')].join(':');
-}
-function decryptGCM(ct, k, tag) {
-  const s = ct.replace(new RegExp('^' + tag + ':'), '').split(':'); if (s.length < 3) return null;
-  const iv = Buffer.from(s[0], 'base64'), at = Buffer.from(s[1], 'base64'), data = Buffer.from(s[2], 'base64');
-  const d = crypto.createDecipheriv('aes-256-gcm', k, iv); d.setAuthTag(at);
-  return d.update(data, undefined, 'utf8') + d.final('utf8');
-}
-
-// Legacy CBC reader -- unauthenticated, no longer produced. Kept so existing
-// cbc: values from older builds still decrypt and migrate forward on next save.
-function decryptCBC(ct, k) {
-  const s = ct.replace(/^cbc:/, '').split(':'); if (s.length < 2) return null;
-  const iv = Buffer.from(s[0], 'base64'), data = Buffer.from(s[1], 'base64');
-  const d = crypto.createDecipheriv('aes-256-cbc', k, iv);
-  return d.update(data, undefined, 'utf8') + d.final('utf8');
-}
-
-function encryptField(p) {
-  if (_sessionPass) return encryptGCM(p, getEncryptionKey(), 'gs'); // unlocked passphrase
-  if (passphraseMode()) throw new Error('locked'); // never write with the wrong key
-  if (safeStorageReady()) return 'safe:' + safeStorage.encryptString(p).toString('base64');
-  return encryptGCM(p, getEncryptionKey(), 'gs'); // machine-bound, no keychain
-}
-function decryptField(ct) {
-  try {
-    if (!ct) return null;
-    if (ct.startsWith('safe:')) {
-      if (!safeStorageReady()) return null;
-      return safeStorage.decryptString(Buffer.from(ct.slice(5), 'base64'));
-    }
-    if (ct.startsWith('gs:')) return decryptGCM(ct, getEncryptionKey(), 'gs');
-    if (ct.startsWith('gcm:')) return decryptGCM(ct, getLegacyKey(), 'gcm');
-    if (ct.startsWith('cbc:')) return decryptCBC(ct, getLegacyKey());
-    return ct;
-  } catch { return null; }
-}
-
-function isEncrypted(v) {
-  return typeof v === 'string' && (v.startsWith('safe:') || v.startsWith('gs:') || v.startsWith('gcm:') || v.startsWith('cbc:'));
-}
-function encryptAccount(a) {
-  const o = { ...a };
-  if (o.cookie && !isEncrypted(o.cookie)) o.cookie = encryptField(o.cookie);
-  o._enc = true;
-  return o;
-}
-function decryptAccount(a) {
-  const o = { ...a };
-  if (o.cookie) o.cookie = decryptField(o.cookie) ?? '';
-  return o;
-}
-
 const dataPath = path.join(app.getPath('userData'), 'accounts.json');
 function loadAccounts() {
-  try { if (!fs.existsSync(dataPath)) return []; return JSON.parse(fs.readFileSync(dataPath, 'utf8')).map(decryptAccount); } catch { return []; }
+  try { if (!fs.existsSync(dataPath)) return []; return JSON.parse(fs.readFileSync(dataPath, 'utf8')); } catch { return []; }
 }
-function saveAccounts(a) { fs.writeFileSync(dataPath, JSON.stringify(a.map(encryptAccount), null, 2), { mode: 0o600 }); }
-
-// One-time, best-effort upgrade: re-encrypt any legacy device-key (gcm:) or
-// unauthenticated (cbc:) cookies to OS-keychain storage (safe:). Only runs when
-// no passphrase is set and the keychain is available. Aborts untouched if any
-// non-empty cookie fails to decrypt, so a bad read can never wipe data.
-function migrateAccountEncryptionToKeychain() {
-  try {
-    if (passphraseMode()) return; // passphrase user: never touch (avoids wrong-key writes)
-    if (!safeStorageReady()) return;
-    if (!fs.existsSync(dataPath)) return;
-    const raw = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
-    const needs = raw.some(a => a.cookie && (a.cookie.startsWith('gcm:') || a.cookie.startsWith('cbc:')));
-    if (!needs) return;
-    const plain = raw.map(decryptAccount);
-    // Safety: if anything that had a cookie now reads empty, decryption failed.
-    for (let i = 0; i < raw.length; i++) {
-      if (raw[i].cookie && !plain[i].cookie) { console.error('[migrate] decrypt failed; leaving accounts untouched'); return; }
-    }
-    saveAccounts(plain); // re-encrypts via encryptField -> safe:
-    console.log('[migrate] upgraded account encryption to OS keychain');
-  } catch (e) { console.error('[migrate] skipped:', e.message); }
-}
+function saveAccounts(a) { fs.writeFileSync(dataPath, JSON.stringify(a, null, 2), { mode: 0o600 }); }
 
 // Packages: named groups of accounts that can be launched together with a
 // single shared join-link. No secrets live here -- just names, account-id
@@ -579,10 +383,6 @@ function createWindow() {
 }
 app.whenReady().then(async () => {
   if (process.platform === 'win32') app.setAppUserModelId('com.multiroblox.app');
-  initEncryption(); // migrate key formats + restore this boot's session key (silent unlock)
-  prewarmKey(); // non-blocking; derives the passphrase key off the main thread
-  // Upgrade any legacy-encrypted accounts to OS-keychain storage (no-op if none).
-  migrateAccountEncryptionToKeychain();
   // Paint the UI immediately. The native-helper compile (first run only) and the
   // mutex grab used to block here, leaving the window hidden for seconds on a
   // cold start. The launch path independently awaits startMutexHolder() before
@@ -604,62 +404,14 @@ ipcMain.on('window-maximize', () => win.isMaximized() ? win.unmaximize() : win.m
 ipcMain.on('window-close', () => win.close());
 ipcMain.on('open-external', (_, url) => shell.openExternal(url));
 
-// ---- Encryption unlock IPC ----
-ipcMain.handle('enc:status', () => {
-  if (!passphraseMode()) {
-    // No key configured yet. Offer the one-time setup popup until dismissed.
-    return { mode: 'setup' }; // Always force key setup, no device-bound mode
-  }
-  return { mode: _sessionPass ? 'unlocked' : 'locked' };
-});
-ipcMain.handle('enc:unlock', (_, pass) => {
-  if (!pass || !verifyPass(pass)) return { ok: false };
-  _sessionPass = pass; invalidateKeyCache(); writeSessionKey(pass);
-  return { ok: true };
-});
-// Set, change, or clear the passphrase. Re-encrypts existing accounts with the
-// new key in one step. Empty pass -> machine-bound mode.
-ipcMain.handle('enc:setKey', (_, pass) => {
-  try {
-    const np = (pass || '').trim();
-    // Decrypt with the CURRENT key while we still can. Abort if any account that
-    // had a stored cookie now reads empty (failed decrypt) so we never re-encrypt
-    // garbage and lose data.
-    const raw = fs.existsSync(dataPath) ? JSON.parse(fs.readFileSync(dataPath, 'utf8')) : [];
-    const accts = raw.map(decryptAccount);
-    for (let i = 0; i < raw.length; i++) {
-      if (raw[i].cookie && !accts[i].cookie) return { ok: false, error: 'decrypt failed' };
-    }
-    if (np) {
-      _sessionPass = np; invalidateKeyCache();
-      const { customKey, customKeyEnc, ...rest } = loadSettings();
-      saveSettings({ ...rest, keyVerifier: makeVerifier(np), encSetupDone: true });
-      writeSessionKey(np);
-    } else {
-      _sessionPass = null; invalidateKeyCache();
-      const { customKey, customKeyEnc, keyVerifier, ...rest } = loadSettings();
-      saveSettings({ ...rest, encSetupDone: true });
-      clearSessionKey();
-    }
-    invalidateKeyCache();
-    saveAccounts(accts); // re-encrypt with the new key (or machine-bound)
-    return { ok: true };
-  } catch (e) { return { ok: false, error: e.message }; }
-});
-
 ipcMain.handle('settings:load', () => {
-  // Never expose key material to the renderer. The passphrase is entered via the
-  // unlock/setup popup, not prefilled. Report whether a key is configured instead.
   const s = loadSettings();
   const { customKeyEnc, customKey, keyVerifier, _deviceKey, ...rest } = s;
-  return { ...rest, keySet: passphraseMode() };
+  return rest;
 });
 ipcMain.handle('settings:save', (_, data) => {
-  // Key changes go through enc:setKey (handles re-encryption + verifier). Strip any
-  // key field here so a plain settings write can never persist or wipe a key.
   const { customKey, customKeyEnc, keyVerifier, ...rest } = data;
   saveSettings({ ...loadSettings(), ...rest });
-  if ('encryptionType' in data) invalidateKeyCache();
   if ('multiInstance' in data) {
     if (data.multiInstance) startMutexHolder();
     else stopMutexHolder();

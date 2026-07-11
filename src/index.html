@@ -364,57 +364,6 @@
               </div>
             </div>
 
-            <!-- Encryption -->
-            <div class="sc">
-              <div class="sc-head">Encryption</div>
-              <div class="sr" style="flex-direction:column;align-items:flex-start;gap:8px">
-                <div class="sr-left">
-                  <div class="sr-label">Algorithm</div>
-                  <div class="sr-desc">Used to encrypt cookies stored on disk.</div>
-                </div>
-                <div class="cdd" id="cdd-enc" style="width:100%">
-                  <div class="cdd-trigger" id="cdd-enc-trigger" onclick="toggleCdd('enc')">
-                    <span class="cdd-label" id="cdd-enc-label">AES-256-GCM</span>
-                    <span class="cdd-badge" id="cdd-enc-badge">Recommended</span>
-                    <span class="material-icons-round cdd-arrow">expand_more</span>
-                  </div>
-                  <div class="cdd-menu" id="cdd-enc-menu">
-                    <div class="cdd-option selected" data-value="aes-256-gcm" onclick="selectCdd('enc','aes-256-gcm')">
-                      <div class="cdd-opt-left">
-                        <div class="cdd-opt-name">AES-256-GCM</div>
-                        <div class="cdd-opt-desc">Authenticated - tamper-proof</div>
-                      </div>
-                      <span class="badge g">Best</span><span class="material-icons-round cdd-check">check</span>
-                    </div>
-                    <div class="cdd-option" data-value="aes-256-cbc" onclick="selectCdd('enc','aes-256-cbc')">
-                      <div class="cdd-opt-left">
-                        <div class="cdd-opt-name">AES-256-CBC</div>
-                        <div class="cdd-opt-desc">Classic block cipher</div>
-                      </div>
-                      <span class="badge muted">Standard</span><span class="material-icons-round cdd-check">check</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="sr" style="flex-direction:column;align-items:flex-start;gap:8px">
-                <div class="sr-left" style="width:100%">
-                  <div class="sr-label">Encryption key</div>
-                  <div class="sr-desc">Change your encryption key here. You will need to re-enter it on your next
-                    launch.</div>
-                </div>
-                <div style="width:100%;display:flex;gap:8px;align-items:center">
-                  <input type="password" class="sr-input" id="custom-key" placeholder="e.g. SecureKey1234@A#"
-                    style="flex:1;width:auto" oninput="onKeyInput()" />
-                  <button class="btn btn-ghost" style="font-size:12px;padding:7px 12px" onclick="toggleKeyVisibility()"
-                    title="Show/hide">
-                    <span class="material-icons-round" style="font-size:14px" id="key-vis-icon">visibility</span>
-                  </button>
-                  <button class="btn btn-primary" style="font-size:12px;padding:7px 12px" onclick="saveKeySettings()"
-                    id="btn-save-key">Save</button>
-                </div>
-              </div>
-            </div>
-
             <!-- Multi-instance -->
             <div class="sc">
               <div class="sc-head">Multi-Instance</div>
@@ -737,22 +686,6 @@
       <div class="modal-actions">
         <button class="btn btn-ghost" onclick="closeModal('m-confirm-delete')">Cancel</button>
         <button class="btn btn-danger" id="m-confirm-delete-btn">Delete</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- encryption unlock / setup modal -->
-  <div class="overlay" id="m-enc" data-backdrop-close="false">
-    <div class="modal" onclick="event.stopPropagation()" style="width:360px">
-      <div class="modal-title" id="enc-title" style="font-size:18px;margin-bottom:6px">Enter your encryption key</div>
-      <div class="modal-sub" id="enc-desc" style="font-size:14px;margin-bottom:0">Enter the key you set to unlock your
-        saved accounts.</div>
-      <input type="password" class="sr-input" id="enc-input" placeholder="e.g. SecureKey1234@A#"
-        style="width:100%;margin:14px 0 2px" onkeydown="if(event.key==='Enter')submitEnc()" autocomplete="off"
-        spellcheck="false" />
-      <div id="enc-err" style="display:none;color:var(--red);font-size:12px;margin-top:6px"></div>
-      <div class="modal-actions" style="margin-top:16px">
-        <button class="btn btn-primary" id="enc-action" onclick="submitEnc()">Unlock</button>
       </div>
     </div>
   </div>

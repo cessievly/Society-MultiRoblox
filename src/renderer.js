@@ -7,7 +7,15 @@ const _launchedIds = new Set();
 // filters or search box -- use Ctrl+F (native find) over the text instead.
 const _logs = [];
 const MAX_LOGS = 2000;
-const LOG_CATS = { launch:'launch', crash:'crash', kill:'kill', cookie:'cookie', afk:'afk', enc:'enc', system:'system', close:'close' };
+const LOG_CATS = {
+  launch: 'launch',
+  crash: 'crash',
+  kill: 'kill',
+  cookie: 'cookie',
+  afk: 'afk',
+  system: 'system',
+  close: 'close'
+};
 
 function logEntry(level, category, message, meta) {
   const entry = { ts: Date.now(), level, category, message, meta: meta || {} };
@@ -18,7 +26,7 @@ function logEntry(level, category, message, meta) {
 
 function _logLine(e) {
   const t = new Date(e.ts);
-  const ts = t.toLocaleTimeString('en-GB', { hour12:false }) + '.' + String(t.getMilliseconds()).padStart(3,'0');
+  const ts = t.toLocaleTimeString('en-GB', { hour12: false }) + '.' + String(t.getMilliseconds()).padStart(3, '0');
   const cat = String(e.category || '').toUpperCase().padEnd(7);
   const keys = Object.keys(e.meta || {}).filter(k => e.meta[k] !== null && e.meta[k] !== undefined);
   const meta = keys.length ? '  ' + keys.map(k => `${k}=${e.meta[k]}`).join(' ') : '';
@@ -64,75 +72,7 @@ function logFind(backwards) {
 const _avatarCache = {};
 let settings = {};
 
-const ENC_OPTIONS = {
-  'aes-256-gcm': { label: 'AES-256-GCM', badge: 'Best', badgeClass: 'green' },
-  'aes-256-cbc': { label: 'AES-256-CBC', badge: 'Standard', badgeClass: 'muted' },
-};
-let selectedEnc = 'aes-256-gcm';
-
-let _encMode = null;
-function showEncModal(mode) {
-  _encMode = mode;
-  const title = document.getElementById('enc-title');
-  const desc = document.getElementById('enc-desc');
-  const action = document.getElementById('enc-action');
-  const skip = document.getElementById('enc-skip');
-  const err = document.getElementById('enc-err');
-  const inp = document.getElementById('enc-input');
-  if (err) err.style.display = 'none';
-  if (inp) inp.value = '';
-  if (action) action.disabled = false;
-  if (mode === 'setup') {
-    title.textContent = 'Create an encryption key';
-    desc.textContent = 'Set an encryption key to protect your saved accounts. You will be asked for it every time you open the app.';
-    action.textContent = 'Set key';
-    if (skip) if (skip) skip.style.display = 'none';
-  } else {
-    title.textContent = 'Enter your encryption key';
-    desc.textContent = 'Enter the key you set to unlock your saved accounts.';
-    action.textContent = 'Unlock';
-    if (skip) skip.style.display = 'none';
-  }
-  openModal('m-enc');
-  setTimeout(() => inp && inp.focus(), 60);
-}
-function _encErr(m) { const e = document.getElementById('enc-err'); if (e) { e.textContent = m; e.style.display = 'block'; } }
-async function submitEnc() {
-  const inp = document.getElementById('enc-input');
-  const action = document.getElementById('enc-action');
-  const val = inp ? inp.value : '';
-  if (action) action.disabled = true;
-  try {
-    if (_encMode === 'setup') {
-      if (!val) { _encErr('Please enter an encryption key.'); action.disabled = false; return; }
-      const r = await api.encSetKey(val);
-      if (!r || !r.ok) { _encErr('Could not set encryption key. Please try again.'); action.disabled = false; return; }
-    } else {
-      if (!val) { _encErr('Please enter your encryption key.'); action.disabled = false; return; }
-      const r = await api.encUnlock(val);
-      if (!r || !r.ok) { _encErr('Wrong key. Please try again.'); logEntry('warn', 'enc', 'Failed encryption unlock attempt (wrong key)'); action.disabled = false; inp.value = ''; inp.focus(); return; }
-      logEntry('ok', 'enc', 'Encryption key accepted - accounts unlocked');
-    }
-    closeModal('m-enc');
-    await continueInit();
-  } catch (e) { _encErr('Something went wrong. Please try again.'); if (action) action.disabled = false; }
-}
-async function skipEnc() {
-  const skip = document.getElementById('enc-skip');
-  if (skip) skip.disabled = true;
-  try { await api.encSetKey(''); } catch {}
-  closeModal('m-enc');
-  await continueInit();
-}
-
 async function init() {
-  // Encryption gate: in passphrase mode the cookies can't be read until the key is
-  // entered for this boot session. Show the popup first; only load data once ready.
-  try {
-    const st = await api.encStatus();
-    if (st && st.mode === 'locked') { showEncModal('locked'); return; }
-    if (st && st.mode === 'setup') { showEncModal('setup'); return; }
-  } catch {}
   await continueInit();
 }
 
@@ -152,9 +92,9 @@ async function continueInit() {
   detectRobloxVersion();
   startRunningPoll();
   logEntry('info', 'system', 'MultiRoblox started', { version: 'v1', accounts: accounts.length, platform: navigator.platform });
-  try { const k = localStorage.getItem('bloxgen_apikey'); if (k) { const el = document.getElementById('gen-apikey'); if (el) el.value = k; } } catch {}
-  try { const afkStat = await api.antiAfkStatus(); if (afkStat && afkStat.enabled) logEntry('info', 'afk', `Anti-AFK is enabled on startup (active: ${afkStat.active})`, { enabled: afkStat.enabled, active: afkStat.active }); } catch {}
-  try { _genHistory = (await api.readGenHistory()) || []; genRenderHistory(); } catch {}
+  try { const k = localStorage.getItem('bloxgen_apikey'); if (k) { const el = document.getElementById('gen-apikey'); if (el) el.value = k; } } catch { }
+  try { const afkStat = await api.antiAfkStatus(); if (afkStat && afkStat.enabled) logEntry('info', 'afk', `Anti-AFK is enabled on startup (active: ${afkStat.active})`, { enabled: afkStat.enabled, active: afkStat.active }); } catch { }
+  try { _genHistory = (await api.readGenHistory()) || []; genRenderHistory(); } catch { }
 
   // Forward main-process log events into the renderer log
   api.onLogEntry(data => logEntry(data.level, data.category, data.message, data.meta));
@@ -205,7 +145,7 @@ async function continueInit() {
 init();
 
 // ── Theme ──────────────────────────────────────────────────────────────────
-var THEMES = ['dark','light','midnight','aurora','sunset','crimson','ocean','grape','forest','amber','rose','graphite'];
+var THEMES = ['dark', 'light', 'midnight', 'aurora', 'sunset', 'crimson', 'ocean', 'grape', 'forest', 'amber', 'rose', 'graphite'];
 function applyTheme(name) {
   if (THEMES.indexOf(name) < 0) name = 'dark';
   document.body.classList.remove('light');
@@ -220,13 +160,13 @@ function currentTheme() { try { return localStorage.getItem('ui-theme') || 'dark
 function setTheme(name) {
   if (THEMES.indexOf(name) < 0) name = 'dark';
   applyTheme(name);
-  try { localStorage.setItem('ui-theme', name); } catch {}
+  try { localStorage.setItem('ui-theme', name); } catch { }
 }
 // Titlebar button: quick dark <-> light switch (leaves the special themes).
 function toggleTheme() {
   setTheme(currentTheme() === 'light' ? 'dark' : 'light');
 }
-(function() {
+(function () {
   let t;
   try {
     t = localStorage.getItem('ui-theme');
@@ -236,19 +176,19 @@ function toggleTheme() {
 })();
 
 // ── BloxGen API key persistence ────────────────────────────────────────────
-(function() {
+(function () {
   try {
     const saved = localStorage.getItem('bloxgen_apikey');
     if (saved) {
       const el = document.getElementById('gen-apikey');
       if (el) el.value = saved;
     }
-  } catch {}
+  } catch { }
 })();
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('gen-apikey');
   if (el) el.addEventListener('input', () => {
-    try { localStorage.setItem('bloxgen_apikey', el.value); } catch {}
+    try { localStorage.setItem('bloxgen_apikey', el.value); } catch { }
   });
 });
 
@@ -274,14 +214,6 @@ async function detectRobloxVersion() {
 }
 
 function applySettings() {
-  if (settings.encryptionType) {
-    selectedEnc = settings.encryptionType;
-    updateCddDisplay('enc', selectedEnc);
-    document.querySelectorAll('#cdd-enc-menu .cdd-option').forEach(o =>
-      o.classList.toggle('selected', o.dataset.value === selectedEnc));
-  }
-  const keyIn = document.getElementById('custom-key');
-  if (keyIn) { keyIn.value = ''; keyIn.placeholder = settings.keySet ? 'Key is set, type to update it' : 'e.g. SecureKey1234@A#'; }
   const afk = document.getElementById('set-antiafk');
   if (afk) afk.checked = !!settings.antiAfk;
   const afkSb = document.getElementById('sb-antiafk');
@@ -316,7 +248,7 @@ function onAcctSearch(v) {
 function toggleFilterMenu(e) { if (e) e.stopPropagation(); document.getElementById('filter-menu').classList.toggle('open'); }
 function setAcctFilter(f) {
   _acctFilter = f;
-  try { localStorage.setItem('mr-acct-filter', (f === 'running' || f === 'idle') ? 'all' : f); } catch {}
+  try { localStorage.setItem('mr-acct-filter', (f === 'running' || f === 'idle') ? 'all' : f); } catch { }
   document.querySelectorAll('#filter-menu button').forEach(b => b.classList.toggle('active', b.dataset.f === f));
   document.getElementById('filter-menu').classList.remove('open');
   document.getElementById('filter-btn').classList.toggle('on', f !== 'all');
@@ -324,7 +256,7 @@ function setAcctFilter(f) {
 }
 function setAcctView(v) {
   _acctView = v;
-  try { localStorage.setItem('mr-acct-view', v); } catch {}
+  try { localStorage.setItem('mr-acct-view', v); } catch { }
   document.getElementById('vt-grid').classList.toggle('active', v === 'grid');
   document.getElementById('vt-list').classList.toggle('active', v === 'list');
   render();
@@ -344,35 +276,8 @@ function toggleAntiAfk(src) {
   toast(on ? 'Anti-AFK on, accounts stay connected' : 'Anti-AFK off', on ? 'ok' : 'err');
 }
 
-function toggleCdd(name) {
-  const trigger = document.getElementById('cdd-' + name + '-trigger');
-  const menu = document.getElementById('cdd-' + name + '-menu');
-  const open = menu.classList.contains('open');
-  closeAllCdd();
-  if (!open) { trigger.classList.add('open'); menu.classList.add('open'); }
-}
-function closeAllCdd() {
-  document.querySelectorAll('.cdd-trigger.open').forEach(t => t.classList.remove('open'));
-  document.querySelectorAll('.cdd-menu.open').forEach(m => m.classList.remove('open'));
-}
-function selectCdd(name, value) {
-  selectedEnc = value;
-  document.querySelectorAll('#cdd-' + name + '-menu .cdd-option').forEach(o =>
-    o.classList.toggle('selected', o.dataset.value === value));
-  updateCddDisplay(name, value);
-  closeAllCdd();
-}
-function updateCddDisplay(name, value) {
-  const meta = ENC_OPTIONS[value] || { label: value, badge: '', badgeClass: '' };
-  const lbl = document.getElementById('cdd-' + name + '-label');
-  const bdg = document.getElementById('cdd-' + name + '-badge');
-  if (lbl) lbl.textContent = meta.label;
-  if (bdg) { bdg.textContent = meta.badge; bdg.className = 'cdd-badge' + (meta.badgeClass ? ' ' + meta.badgeClass : ''); }
-}
-document.addEventListener('click', e => { if (!e.target.closest('.cdd')) closeAllCdd(); });
-
 function settingsTab(tab) {
-  ['general','themes','sounds'].forEach(t => {
+  ['general', 'themes', 'sounds'].forEach(t => {
     const panel = document.getElementById('stab-panel-' + t);
     const btn = document.getElementById('stab-' + t);
     if (panel) panel.style.display = t === tab ? '' : 'none';
@@ -568,33 +473,33 @@ async function recheckAllCookies(force) {
   // checkCookieHealth pass inside render() races us and validates them twice
   for (const a of accounts) if (a.cookie && _cookieStatus[a.id] === undefined) _cookieStatus[a.id] = 'checking';
   try {
-  let changed = false;
-  const now = Date.now();
-  for (const a of accounts) {
-    if (!a.cookie) continue;
-    // good cookies only get re-checked every few minutes to keep the request
-    // rate down; dead/unknown ones are retried every tick so a recovery shows
-    // up fast. force (the decrypt pass) ignores this and checks everything.
-    if (!force && _cookieStatus[a.id] === 'ok' && _cookieCheckedAt[a.id] && (now - _cookieCheckedAt[a.id]) < OK_RECHECK_MS) continue;
-    const prev = _cookieStatus[a.id];
-    _cookieStatus[a.id] = 'checking';
-    try {
-      const res = await api.validateCookie(a.cookie);
-      _cookieCheckedAt[a.id] = Date.now();
-      const next = (res && res.ok) ? 'ok' : 'dead';
-      if (next !== prev) {
-        _cookieStatus[a.id] = next;
-        applyCookieStatus(a.id); // toggles .cookie-dead on the card (badge + ring)
-        changed = true;
-        if (next === 'dead') logEntry('warn', 'cookie', `Cookie expired for ${a.username || a.id}`, { accountId: a.id, username: a.username, userId: a.userId });
-        else if (prev === 'dead' && next === 'ok') logEntry('ok', 'cookie', `Cookie re-validated for ${a.username || a.id}`, { accountId: a.id, username: a.username, userId: a.userId });
-      } else {
-        _cookieStatus[a.id] = next;
-      }
-    } catch { _cookieStatus[a.id] = prev || 'unknown'; }
-    await new Promise(r => setTimeout(r, 300));
-  }
-  if (changed) render(); // rebuild once at the end so the cards match
+    let changed = false;
+    const now = Date.now();
+    for (const a of accounts) {
+      if (!a.cookie) continue;
+      // good cookies only get re-checked every few minutes to keep the request
+      // rate down; dead/unknown ones are retried every tick so a recovery shows
+      // up fast. force (the decrypt pass) ignores this and checks everything.
+      if (!force && _cookieStatus[a.id] === 'ok' && _cookieCheckedAt[a.id] && (now - _cookieCheckedAt[a.id]) < OK_RECHECK_MS) continue;
+      const prev = _cookieStatus[a.id];
+      _cookieStatus[a.id] = 'checking';
+      try {
+        const res = await api.validateCookie(a.cookie);
+        _cookieCheckedAt[a.id] = Date.now();
+        const next = (res && res.ok) ? 'ok' : 'dead';
+        if (next !== prev) {
+          _cookieStatus[a.id] = next;
+          applyCookieStatus(a.id); // toggles .cookie-dead on the card (badge + ring)
+          changed = true;
+          if (next === 'dead') logEntry('warn', 'cookie', `Cookie expired for ${a.username || a.id}`, { accountId: a.id, username: a.username, userId: a.userId });
+          else if (prev === 'dead' && next === 'ok') logEntry('ok', 'cookie', `Cookie re-validated for ${a.username || a.id}`, { accountId: a.id, username: a.username, userId: a.userId });
+        } else {
+          _cookieStatus[a.id] = next;
+        }
+      } catch { _cookieStatus[a.id] = prev || 'unknown'; }
+      await new Promise(r => setTimeout(r, 300));
+    }
+    if (changed) render(); // rebuild once at the end so the cards match
   } finally { _recheckRunning = false; }
 }
 setInterval(() => { if (accounts.length) recheckAllCookies(false); }, 60000);
@@ -606,7 +511,7 @@ const _gameNameCache = {}; // accountId -> resolved game name
 // (available in the Electron renderer, same as the theme setting).
 let _gameNamePersist = {};
 try { _gameNamePersist = JSON.parse(localStorage.getItem('mr-gamenames') || '{}'); } catch { _gameNamePersist = {}; }
-function _saveGameNames() { try { localStorage.setItem('mr-gamenames', JSON.stringify(_gameNamePersist)); } catch {} }
+function _saveGameNames() { try { localStorage.setItem('mr-gamenames', JSON.stringify(_gameNamePersist)); } catch { } }
 
 function extractTargetLabel(target) {
   if (!target) return '';
@@ -645,7 +550,7 @@ async function fetchGameName(accountId, target) {
       if (!placeId) placeId = u.searchParams.get('placeId');
       // PlaceLauncher URLs: ?placeId=...
       if (!placeId) { const m = t.match(/[?&]placeId=(\d+)/); if (m) placeId = m[1]; }
-    } catch {}
+    } catch { }
   }
   if (!cookie) {
     _gameNameCache[accountId] = extractTargetLabel(target);
@@ -715,7 +620,7 @@ function initDrag() {
 function onDragMove(e) {
   if (!_dragging || !_dragClone || !_dragging.isConnected) return;
   _dragClone.style.left = (e.clientX - _dragOffX) + 'px';
-  _dragClone.style.top  = (e.clientY - _dragOffY) + 'px';
+  _dragClone.style.top = (e.clientY - _dragOffY) + 'px';
 
   // nudge the scroll when the cursor gets near the top/bottom edge
   const wrap = document.querySelector('.grid-wrap');
@@ -793,7 +698,7 @@ function loadAvatar(id, uid) {
         const el = document.getElementById('av-' + id);
         if (el) el.innerHTML = '<img src="' + esc(url) + '" alt=""/>';
       }
-    }).catch(() => {});
+    }).catch(() => { });
 }
 
 // Batched avatar load: one request for every uncached account instead of one per
@@ -841,7 +746,7 @@ function loadPkgAvatar(pkgId, accountId, uid, attempt) {
       if (item && item.state === 'Pending' && (attempt || 0) < 3) {
         setTimeout(() => loadPkgAvatar(pkgId, accountId, uid, (attempt || 0) + 1), 1500);
       } else if (item && item.imageUrl) { paint(item.imageUrl); }
-    }).catch(() => {});
+    }).catch(() => { });
 }
 
 // ── Avatar hover card ───────────────────────────────────────────────────────
@@ -907,7 +812,7 @@ document.addEventListener('mouseout', e => {
 window.addEventListener('scroll', hideAvTip, true);
 
 function _showPanel(panel) {
-  ['choose','cookie','browser'].forEach(p => {
+  ['choose', 'cookie', 'browser'].forEach(p => {
     document.getElementById('login-panel-' + p).style.display = p === panel ? '' : 'none';
   });
   document.getElementById('btn-cookie-add').style.display = panel === 'cookie' ? '' : 'none';
@@ -1068,7 +973,7 @@ function openLaunch(id) {
       .then(r => r.json()).then(d => {
         const url = d?.data?.[0]?.imageUrl, el = document.getElementById('prev-av');
         if (url && el) el.innerHTML = '<img src="' + esc(url) + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>';
-      }).catch(() => {});
+      }).catch(() => { });
   }
 
   setStatus('launch-status', 'hidden', '');
@@ -1266,47 +1171,10 @@ async function launchPackage(id) {
   toast('Launched ' + okCount + '/' + members.length + ' accounts in "' + p.name + '"', okCount === members.length ? 'ok' : 'err');
 }
 
-function toggleKeyVisibility() {
-  const input = document.getElementById('custom-key'), icon = document.getElementById('key-vis-icon');
-  if (input.type === 'password') { input.type = 'text'; icon.textContent = 'visibility_off'; }
-  else { input.type = 'password'; icon.textContent = 'visibility'; }
-}
-let _saveKeyTimer;
-function onKeyInput() {
-  const btn = document.getElementById('btn-save-key');
-  if (btn) { btn.disabled = false; btn.textContent = 'Save'; }
-}
-async function saveKeySettings() {
-  const keyVal = document.getElementById('custom-key').value;
-  const btn = document.getElementById('btn-save-key');
-  if (btn.disabled) return;
-  clearTimeout(_saveKeyTimer);
-  btn.disabled = true; btn.textContent = 'Saving\u2026';
-  _saveKeyTimer = setTimeout(async () => {
-    try {
-      await api.saveSettings({ encryptionType: selectedEnc });
-      // enc:setKey changes the key and re-encrypts accounts in one step.
-      const r = await api.encSetKey(keyVal);
-      if (!r || !r.ok) throw new Error(r && r.error ? r.error : 'could not update key');
-      if (!keyVal.trim()) throw new Error('Encryption key cannot be empty.');
-      settings.encryptionType = selectedEnc; settings.keySet = true;
-      document.getElementById('custom-key').value = '';
-      // Reload accounts so the renderer holds cookies under the new key.
-      try { accounts = await api.loadAccounts(); render(); } catch {}
-      toast('Encryption key updated', 'ok');
-      applySettings();
-    } catch (e) {
-      toast('Save failed: ' + e.message, 'err');
-    } finally {
-      btn.disabled = false; btn.textContent = 'Save';
-    }
-  }, 300);
-}
-
 function openModal(id) { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 function setStatus(id, type, html) { const el = document.getElementById(id); el.className = 'mst ' + type; el.innerHTML = html; }
-function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
 function toast(msg, type) {
   type = type || '';
   const el = document.getElementById('toast'), icon = type === 'ok' ? 'check_circle' : 'cancel';
@@ -1347,7 +1215,7 @@ document.addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && e.key === 'n') { e.preventDefault(); openLogin(); }
   // "/" focuses the account search (when not already typing in a field).
   if (e.key === '/' && document.getElementById('page-accounts')?.classList.contains('active')
-      && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '')) {
+    && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '')) {
     e.preventDefault();
     document.getElementById('acct-search')?.focus();
   }
@@ -1387,7 +1255,7 @@ async function loadCharts() {
     chartsLoaded = true;
     loading.style.display = 'none';
     renderCharts(allCharts[chartTab] || [], false);
-  } catch(e) {
+  } catch (e) {
     console.error('Charts load error:', e);
     loading.style.display = 'none';
     empty.style.display = 'flex';
@@ -1424,7 +1292,7 @@ async function fetchRobloxGames(sortId) {
       const thumbData = await thumbRes.json();
       (thumbData.data || []).forEach(t => { thumbMap[t.targetId] = t.imageUrl; });
     }
-  } catch {}
+  } catch { }
 
   return games.map(g => ({
     universeId: g.universeId,
@@ -1501,7 +1369,7 @@ async function searchRobloxGames(query) {
       const td = await thumbRes.json();
       (td.data || []).forEach(t => { thumbMap[t.targetId] = t.imageUrl; });
     }
-  } catch {}
+  } catch { }
 
   return universeIds.map(uid => {
     const det = detailMap[uid] || {};
@@ -1542,7 +1410,7 @@ function filterCharts(val) {
       if (document.getElementById('chart-search').value.trim() === query) {
         renderCharts(results, true);
       }
-    } catch(e) {
+    } catch (e) {
       console.error('Search error:', e);
       loading.style.display = 'none';
       emptyEl.style.display = 'flex';
@@ -1585,7 +1453,7 @@ let _volTimer = null, _mixRunning = 0;
 async function mixInit() {
   // Pull current values from saved Fast Flags + settings.
   let flags = {};
-  try { flags = (await api.readFFlags()) || {}; } catch {}
+  try { flags = (await api.readFFlags()) || {}; } catch { }
 
   // Graphics
   const gfxRaw = flags[FF_GFX];
@@ -1604,7 +1472,7 @@ async function mixInit() {
     document.getElementById('mix-fps').value = fpsUnl ? 60 : Math.max(30, fpsCap || 60);
     document.getElementById('mix-fps-val').textContent = fpsUnl ? '\u221e' : (fpsCap || 60);
     document.getElementById('mix-fps').disabled = fpsUnl;
-  } catch {}
+  } catch { }
 
   // Volume
   const vol = (typeof settings.masterVolume === 'number') ? settings.masterVolume : 100;
@@ -1700,10 +1568,10 @@ async function mixRefreshRunning() {
 // Merge a single key into the on-disk Fast Flags without disturbing others.
 async function mixWriteFlag(key, value) {
   let flags = {};
-  try { flags = (await api.readFFlags()) || {}; } catch {}
+  try { flags = (await api.readFFlags()) || {}; } catch { }
   if (value === null) delete flags[key];
   else flags[key] = String(value);
-  try { await api.writeFFlags(flags); } catch {}
+  try { await api.writeFFlags(flags); } catch { }
 }
 
 // Smoothly fill the slider track up to the current value.
@@ -1841,7 +1709,7 @@ function genToggleKey() {
 
 async function genCombo() {
   const apiKey = (document.getElementById('gen-apikey').value || '').trim();
-  try { localStorage.setItem('bloxgen_apikey', document.getElementById('gen-apikey').value); } catch {}
+  try { localStorage.setItem('bloxgen_apikey', document.getElementById('gen-apikey').value); } catch { }
   if (!apiKey || !apiKey.startsWith('BLOX-')) {
     toast('Enter a valid BloxGen API key (starts with BLOX-)', 'err');
     return;
@@ -1873,12 +1741,12 @@ async function genCombo() {
     _lastGenData = d;
     _genHistory.unshift({ username: d.username, password: d.password, cookie: d.cookie });
     if (_genHistory.length > 500) _genHistory.length = 500; // bound the persisted history
-    api.writeGenHistory(_genHistory).catch(() => {});
+    api.writeGenHistory(_genHistory).catch(() => { });
     _ghPrepend();
 
     // Copy cookie to clipboard if available, else username:password
     const toCopy = d.cookie || (d.username + ':' + d.password);
-    navigator.clipboard.writeText(toCopy).catch(() => {});
+    navigator.clipboard.writeText(toCopy).catch(() => { });
 
     if (btn) { btn.textContent = 'Generate'; btn.disabled = false; }
 
@@ -1927,8 +1795,8 @@ function _ghAppendBatch(list) {
     row.innerHTML =
       '<span class="gh-user"><span style="color:var(--t3)">User:</span> ' + esc(h.username) + '  <span style="color:var(--t3)">Pass:</span> ' + esc(h.password) + '</span>' +
       '<div class="gh-actions">' +
-        '<button class="btn btn-ghost" title="Copy combo"><span class="material-icons-round" style="font-size:15px">content_copy</span></button>' +
-        '<button class="btn btn-ghost" title="Add to accounts"><span class="material-icons-round" style="font-size:15px">person_add</span></button>' +
+      '<button class="btn btn-ghost" title="Copy combo"><span class="material-icons-round" style="font-size:15px">content_copy</span></button>' +
+      '<button class="btn btn-ghost" title="Add to accounts"><span class="material-icons-round" style="font-size:15px">person_add</span></button>' +
       '</div>';
     const btns = row.querySelectorAll('button');
     btns[0].onclick = () => genHistCopy(i);
@@ -1962,8 +1830,8 @@ function _ghPrepend() {
   row.innerHTML =
     '<span class="gh-user"><span style="color:var(--t3)">User:</span> ' + esc(h.username) + '  <span style="color:var(--t3)">Pass:</span> ' + esc(h.password) + '</span>' +
     '<div class="gh-actions">' +
-      '<button class="btn btn-ghost" title="Copy combo"><span class="material-icons-round" style="font-size:15px">content_copy</span></button>' +
-      '<button class="btn btn-ghost" title="Add to accounts"><span class="material-icons-round" style="font-size:15px">person_add</span></button>' +
+    '<button class="btn btn-ghost" title="Copy combo"><span class="material-icons-round" style="font-size:15px">content_copy</span></button>' +
+    '<button class="btn btn-ghost" title="Add to accounts"><span class="material-icons-round" style="font-size:15px">person_add</span></button>' +
     '</div>';
   const btns = row.querySelectorAll('button');
   btns[0].onclick = () => genHistCopy(0);
@@ -1986,7 +1854,7 @@ async function genHistAdd(i) {
     if (!res || !res.username) { toast('Cookie invalid or expired', 'err'); return; }
     const a = await api.addAccount({ username: res.username, userId: res.userId, cookie: h.cookie, gameTarget: '', nickname: '' });
     if (a) { accounts.push(a); render(); toast('Added ' + res.username + ' to accounts', 'ok'); }
-  } catch(e) { toast('Failed to add: ' + e.message, 'err'); }
+  } catch (e) { toast('Failed to add: ' + e.message, 'err'); }
 }
 
 async function genAddToAccounts() {
@@ -1995,17 +1863,17 @@ async function genAddToAccounts() {
   if (btn) { btn.disabled = true; }
   try {
     const res = await api.validateCookie(_lastGenData.cookie);
-    if (!res || !res.username) { toast('Cookie invalid or expired', 'err'); if(btn)btn.disabled=false; return; }
+    if (!res || !res.username) { toast('Cookie invalid or expired', 'err'); if (btn) btn.disabled = false; return; }
     const a = await api.addAccount({ username: res.username, userId: res.userId, cookie: _lastGenData.cookie, gameTarget: '', nickname: '' });
     if (a) { accounts.push(a); render(); toast('Added ' + res.username + ' to accounts!', 'ok'); }
-    if(btn)btn.disabled=false;
-  } catch(e) { toast('Failed: ' + e.message, 'err'); if(btn)btn.disabled=false; }
+    if (btn) btn.disabled = false;
+  } catch (e) { toast('Failed: ' + e.message, 'err'); if (btn) btn.disabled = false; }
 }
 
 function genClearHistory() {
   _genHistory = [];
   _lastGenData = null;
-  api.clearGenHistory().catch(() => {});
+  api.clearGenHistory().catch(() => { });
   genRenderHistory();
   toast('History cleared', 'ok');
 }
@@ -2016,7 +1884,7 @@ function genDetailsCopy() {
   if (!text) { toast('No details to copy', 'err'); return; }
   const btn = document.getElementById('gen-details-copy-btn');
   navigator.clipboard.writeText(text).then(() => {
-    if (btn) { const s = btn.querySelector('span:last-child'); if(s){s.textContent='done'; setTimeout(()=>{s.textContent='details';},1500);} }
+    if (btn) { const s = btn.querySelector('span:last-child'); if (s) { s.textContent = 'done'; setTimeout(() => { s.textContent = 'details'; }, 1500); } }
     toast('Details copied', 'ok');
   });
 }
@@ -2035,7 +1903,7 @@ function genCopy() {
 }
 
 // ── Sound Effects ──────────────────────────────────────────────────────────
-(function() {
+(function () {
   let _audioCtx = null;
   function _ctx() {
     if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -2095,7 +1963,7 @@ function genCopy() {
         const clickBuf = _makeBuf(0.008, (d, sr) => {
           for (let i = 0; i < d.length; i++) {
             const x = i / sr;
-            d[i] = (_noise() * 0.7 + Math.sin(2*Math.PI*3200*x) * 0.3) * Math.exp(-x * 1800);
+            d[i] = (_noise() * 0.7 + Math.sin(2 * Math.PI * 3200 * x) * 0.3) * Math.exp(-x * 1800);
           }
         });
         const clickSrc = ctx.createBufferSource(); clickSrc.buffer = clickBuf;
@@ -2108,8 +1976,8 @@ function genCopy() {
         const snapBuf = _makeBuf(0.025, (d, sr) => {
           for (let i = 0; i < d.length; i++) {
             const x = i / sr;
-            d[i] = (_noise() * 0.5 + Math.sin(2*Math.PI*1100*x) * 0.4 + Math.sin(2*Math.PI*2200*x) * 0.1)
-                  * Math.exp(-x * 350);
+            d[i] = (_noise() * 0.5 + Math.sin(2 * Math.PI * 1100 * x) * 0.4 + Math.sin(2 * Math.PI * 2200 * x) * 0.1)
+              * Math.exp(-x * 350);
           }
         });
         const snapSrc = ctx.createBufferSource(); snapSrc.buffer = snapBuf;
@@ -2122,7 +1990,7 @@ function genCopy() {
         const thudBuf = _makeBuf(0.035, (d, sr) => {
           for (let i = 0; i < d.length; i++) {
             const x = i / sr;
-            d[i] = (_noise() * 0.3 + Math.sin(2*Math.PI*180*x) * 0.7) * Math.exp(-x * 180);
+            d[i] = (_noise() * 0.3 + Math.sin(2 * Math.PI * 180 * x) * 0.7) * Math.exp(-x * 180);
           }
         });
         const thudSrc = ctx.createBufferSource(); thudSrc.buffer = thudBuf;
@@ -2145,10 +2013,10 @@ function genCopy() {
             const x = i / sr;
             // Pitch starts high and drops (impact character)
             const freq = 95 + 280 * Math.exp(-x * 60);
-            d[i] = (Math.sin(2*Math.PI*freq*x) * 0.65
-                  + Math.sin(2*Math.PI*freq*1.6*x) * 0.2
-                  + _noise() * 0.15)
-                  * Math.exp(-x * 65);
+            d[i] = (Math.sin(2 * Math.PI * freq * x) * 0.65
+              + Math.sin(2 * Math.PI * freq * 1.6 * x) * 0.2
+              + _noise() * 0.15)
+              * Math.exp(-x * 65);
           }
         });
         const thudSrc = ctx.createBufferSource(); thudSrc.buffer = thudBuf;
@@ -2160,7 +2028,7 @@ function genCopy() {
         // 2) Soft high transient (muted click, not snappy)
         const transBuf = _makeBuf(0.015, (d, sr) => {
           for (let i = 0; i < d.length; i++) {
-            d[i] = _noise() * Math.exp(-(i/sr) * 900);
+            d[i] = _noise() * Math.exp(-(i / sr) * 900);
           }
         });
         const transSrc = ctx.createBufferSource(); transSrc.buffer = transBuf;
@@ -2172,8 +2040,8 @@ function genCopy() {
         // 3) Low frequency body resonance for that "marble" feel
         const resBuf = _makeBuf(0.08, (d, sr) => {
           for (let i = 0; i < d.length; i++) {
-            const x = i/sr;
-            d[i] = Math.sin(2*Math.PI*55*x) * Math.exp(-x * 90) * 0.9;
+            const x = i / sr;
+            d[i] = Math.sin(2 * Math.PI * 55 * x) * Math.exp(-x * 90) * 0.9;
           }
         });
         const resSrc = ctx.createBufferSource(); resSrc.buffer = resBuf;
@@ -2195,11 +2063,11 @@ function genCopy() {
           for (let i = 0; i < d.length; i++) {
             const x = i / sr;
             const freq = 130 + 100 * Math.exp(-x * 40);
-            d[i] = (Math.sin(2*Math.PI*freq*x) * 0.55
-                  + Math.sin(2*Math.PI*freq*2.1*x) * 0.25
-                  + Math.sin(2*Math.PI*freq*3.3*x) * 0.12
-                  + _noise() * 0.08)
-                  * Math.exp(-x * 110);
+            d[i] = (Math.sin(2 * Math.PI * freq * x) * 0.55
+              + Math.sin(2 * Math.PI * freq * 2.1 * x) * 0.25
+              + Math.sin(2 * Math.PI * freq * 3.3 * x) * 0.12
+              + _noise() * 0.08)
+              * Math.exp(-x * 110);
           }
         });
         const softSrc = ctx.createBufferSource(); softSrc.buffer = softBuf;
@@ -2211,7 +2079,7 @@ function genCopy() {
         // 2) Very subtle air/brush noise (lubed stem feel)
         const brushBuf = _makeBuf(0.05, (d, sr) => {
           for (let i = 0; i < d.length; i++) {
-            d[i] = _noise() * Math.exp(-(i/sr) * 200) * 0.5;
+            d[i] = _noise() * Math.exp(-(i / sr) * 200) * 0.5;
           }
         });
         const brushSrc = ctx.createBufferSource(); brushSrc.buffer = brushBuf;
@@ -2223,9 +2091,9 @@ function genCopy() {
         // 3) Warm low-end resonance
         const warmBuf = _makeBuf(0.06, (d, sr) => {
           for (let i = 0; i < d.length; i++) {
-            const x = i/sr;
-            d[i] = (Math.sin(2*Math.PI*70*x) * 0.6 + Math.sin(2*Math.PI*140*x) * 0.4)
-                  * Math.exp(-x * 140);
+            const x = i / sr;
+            d[i] = (Math.sin(2 * Math.PI * 70 * x) * 0.6 + Math.sin(2 * Math.PI * 140 * x) * 0.4)
+              * Math.exp(-x * 140);
           }
         });
         const warmSrc = ctx.createBufferSource(); warmSrc.buffer = warmBuf;
@@ -2244,15 +2112,15 @@ function genCopy() {
         const ctx = _ctx(); const t = ctx.currentTime;
         const buf = _makeBuf(0.025, (d, sr) => {
           for (let i = 0; i < d.length; i++) {
-            const x = i/sr;
-            d[i] = _noise() * Math.exp(-x*1100);
+            const x = i / sr;
+            d[i] = _noise() * Math.exp(-x * 1100);
           }
         });
         const src = ctx.createBufferSource(); src.buffer = buf;
-        const bp = ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1800; bp.Q.value=1.2;
-        const g = ctx.createGain(); g.gain.setValueAtTime(vol*1.8, t); g.gain.exponentialRampToValueAtTime(0.001, t+0.025);
+        const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1800; bp.Q.value = 1.2;
+        const g = ctx.createGain(); g.gain.setValueAtTime(vol * 1.8, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.025);
         src.connect(bp); bp.connect(g); g.connect(ctx.destination);
-        src.start(t); src.stop(t+0.025);
+        src.start(t); src.stop(t + 0.025);
       }
     },
 
@@ -2265,25 +2133,25 @@ function genCopy() {
         // Main strike
         const buf = _makeBuf(0.035, (d, sr) => {
           for (let i = 0; i < d.length; i++) {
-            const x = i/sr;
-            d[i] = _noise() * Math.exp(-x*350)
-                 + Math.sin(2*Math.PI*280*x) * Math.exp(-x*500) * 0.5;
+            const x = i / sr;
+            d[i] = _noise() * Math.exp(-x * 350)
+              + Math.sin(2 * Math.PI * 280 * x) * Math.exp(-x * 500) * 0.5;
           }
         });
         const src = ctx.createBufferSource(); src.buffer = buf;
-        const hp = ctx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=1500;
-        const g = ctx.createGain(); g.gain.setValueAtTime(vol*1.6, t); g.gain.exponentialRampToValueAtTime(0.001, t+0.035);
+        const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1500;
+        const g = ctx.createGain(); g.gain.setValueAtTime(vol * 1.6, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.035);
         src.connect(hp); hp.connect(g); g.connect(ctx.destination);
-        src.start(t); src.stop(t+0.035);
+        src.start(t); src.stop(t + 0.035);
         // rattle tail
         const buf2 = _makeBuf(0.02, (d, sr) => {
-          for (let i = 0; i < d.length; i++) d[i] = _noise() * Math.exp(-(i/sr)*500);
+          for (let i = 0; i < d.length; i++) d[i] = _noise() * Math.exp(-(i / sr) * 500);
         });
         const src2 = ctx.createBufferSource(); src2.buffer = buf2;
-        const hp2 = ctx.createBiquadFilter(); hp2.type='highpass'; hp2.frequency.value=2500;
-        const g2 = ctx.createGain(); g2.gain.setValueAtTime(vol*0.5, t+0.018); g2.gain.exponentialRampToValueAtTime(0.001, t+0.038);
+        const hp2 = ctx.createBiquadFilter(); hp2.type = 'highpass'; hp2.frequency.value = 2500;
+        const g2 = ctx.createGain(); g2.gain.setValueAtTime(vol * 0.5, t + 0.018); g2.gain.exponentialRampToValueAtTime(0.001, t + 0.038);
         src2.connect(hp2); hp2.connect(g2); g2.connect(ctx.destination);
-        src2.start(t+0.018); src2.stop(t+0.04);
+        src2.start(t + 0.018); src2.stop(t + 0.04);
       }
     },
 
@@ -2291,7 +2159,7 @@ function genCopy() {
       label: 'Off',
       icon: 'volume_off',
       desc: 'No sound',
-      play() {}
+      play() { }
     }
   };
 
@@ -2304,10 +2172,10 @@ function genCopy() {
     if (saved && SOUND_PROFILES[saved]) _currentProfile = saved;
     const sv = localStorage.getItem('sound-volume');
     if (sv !== null) _volume = parseFloat(sv);
-  } catch {}
+  } catch { }
 
   // ── Play current ──────────────────────────────────────────────────────────
-  window._soundPlay = function() {
+  window._soundPlay = function () {
     if (_currentProfile.startsWith('__custom__')) {
       const cid = _currentProfile.slice('__custom__'.length);
       const s = _customSounds.find(x => x.id === cid);
@@ -2319,11 +2187,11 @@ function genCopy() {
 
   // ── Click listener ────────────────────────────────────────────────────────
   const INTERACTIVE = [
-    'button','a','.nav-item','.card','.card-add','.theme-card',
-    '.tb-btn','.btn','.filter-menu button','.chart-card',
-    '[role="button"]','.cdd-trigger','.cdd-option','.pkg-launch-btn',
-    'input[type="checkbox"]','input[type="radio"]','.nav-add',
-    '.gen-hist-row','.modal-close','.modal .btn','.sound-card'
+    'button', 'a', '.nav-item', '.card', '.card-add', '.theme-card',
+    '.tb-btn', '.btn', '.filter-menu button', '.chart-card',
+    '[role="button"]', '.cdd-trigger', '.cdd-option', '.pkg-launch-btn',
+    'input[type="checkbox"]', 'input[type="radio"]', '.nav-add',
+    '.gen-hist-row', '.modal-close', '.modal .btn', '.sound-card'
   ].join(',');
 
   document.addEventListener('click', e => {
@@ -2340,11 +2208,11 @@ function genCopy() {
       localStorage.setItem('sound-customs-meta', JSON.stringify(
         _customSounds.map(s => ({ id: s.id, name: s.name }))
       ));
-    } catch {}
+    } catch { }
   }
 
   // ── Sounds page UI ────────────────────────────────────────────────────────
-  window.soundRenderPage = function() {
+  window.soundRenderPage = function () {
     const grid = document.getElementById('sound-cards-grid');
     if (!grid) return;
 
@@ -2383,57 +2251,57 @@ function genCopy() {
     if (lbl) lbl.textContent = Math.round(_volume * 100) + '%';
   };
 
-  window.soundSelect = function(id) {
+  window.soundSelect = function (id) {
     _currentProfile = id;
-    try { localStorage.setItem('sound-profile', id); } catch {}
+    try { localStorage.setItem('sound-profile', id); } catch { }
     soundRenderPage();
     SOUND_PROFILES[id]?.play(_volume);
   };
 
-  window.soundSelectCustom = function(cid) {
+  window.soundSelectCustom = function (cid) {
     const s = _customSounds.find(x => x.id === cid);
     if (!s) return;
     _currentProfile = '__custom__' + cid;
-    try { localStorage.setItem('sound-profile', '__custom__' + cid); } catch {}
+    try { localStorage.setItem('sound-profile', '__custom__' + cid); } catch { }
     soundRenderPage();
     _playBuf(s.buffer, _volume);
   };
 
-  window.soundPreview = function(id) {
+  window.soundPreview = function (id) {
     SOUND_PROFILES[id]?.play(_volume);
   };
 
-  window.soundPreviewCustom = function(cid) {
+  window.soundPreviewCustom = function (cid) {
     const s = _customSounds.find(x => x.id === cid);
     if (s) _playBuf(s.buffer, _volume);
   };
 
-  window.soundDeleteCustom = function(cid) {
+  window.soundDeleteCustom = function (cid) {
     const idx = _customSounds.findIndex(x => x.id === cid);
     if (idx === -1) return;
     _customSounds.splice(idx, 1);
     // If deleted sound was active, switch to clicky
     if (_currentProfile === '__custom__' + cid) {
       _currentProfile = 'clicky';
-      try { localStorage.setItem('sound-profile', 'clicky'); } catch {}
+      try { localStorage.setItem('sound-profile', 'clicky'); } catch { }
     }
     _saveCustomSoundMeta();
     soundRenderPage();
     toast('Custom sound removed', 'ok');
   };
 
-  window.soundVolChange = function(val) {
+  window.soundVolChange = function (val) {
     _volume = val / 100;
-    try { localStorage.setItem('sound-volume', _volume); } catch {}
+    try { localStorage.setItem('sound-volume', _volume); } catch { }
     const lbl = document.getElementById('sound-vol-val');
     if (lbl) lbl.textContent = val + '%';
   };
 
-  window.soundPickCustom = function() {
+  window.soundPickCustom = function () {
     document.getElementById('sound-file-input')?.click();
   };
 
-  window.soundFileLoaded = function(input) {
+  window.soundFileLoaded = function (input) {
     const file = input.files[0];
     if (!file) return;
     const name = file.name.replace(/\.[^.]+$/, ''); // strip extension
@@ -2445,7 +2313,7 @@ function genCopy() {
         const cid = 'c' + (++_customSoundIdCounter);
         _customSounds.push({ id: cid, name, buffer });
         _currentProfile = '__custom__' + cid;
-        try { localStorage.setItem('sound-profile', '__custom__' + cid); } catch {}
+        try { localStorage.setItem('sound-profile', '__custom__' + cid); } catch { }
         _saveCustomSoundMeta();
         soundRenderPage();
         _playBuf(buffer, _volume);
@@ -2468,15 +2336,15 @@ function genCopy() {
       _customSoundIdCounter = arr.length;
       // Note: AudioBuffers can't be stored in localStorage. Show names but they will need re-upload.
     }
-  } catch {}
+  } catch { }
 
   // Handle legacy single custom sound profile key
   try {
     const saved = localStorage.getItem('sound-profile');
     if (saved && saved.startsWith('__custom__') && !_customSounds.length) {
       _currentProfile = 'clicky';
-      try { localStorage.setItem('sound-profile', 'clicky'); } catch {}
+      try { localStorage.setItem('sound-profile', 'clicky'); } catch { }
     }
-  } catch {}
+  } catch { }
 
 })();
