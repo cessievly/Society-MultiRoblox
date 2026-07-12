@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, net, session } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, net, session, Tray, Menu } = require('electron');
 
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36';
 app.commandLine.appendSwitch('user-agent', CHROME_UA);
@@ -361,6 +361,8 @@ function loadPackages() {
 function savePackages(p) { fs.writeFileSync(packagesPath, JSON.stringify(p, null, 2), { mode: 0o600 }); }
 
 let win;
+let tray = null;
+let isQuiting = false;
 
 // ── Logging ───────────────────────────────────────────────────────────────
 function sendLog(level, category, message, meta) {
@@ -380,7 +382,36 @@ function createWindow() {
   });
   win.loadFile(path.join(__dirname, 'index.html'));
   win.once('ready-to-show', () => win.show());
+
+  win.on('close', (event) => {
+    if (!isQuiting) {
+      event.preventDefault();
+      win.hide();
+    }
+  });
 }
+
+function showMainWindow() {
+  if (!win) return;
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
+
+function createTray() {
+  if (tray) return;
+  tray = new Tray(path.join(__dirname, 'icon.ico'));
+  const trayMenu = Menu.buildFromTemplate([
+    { label: 'Open', click: showMainWindow },
+    { type: 'separator' },
+    { label: 'Exit', click: () => { isQuiting = true; app.quit(); } },
+  ]);
+  tray.setToolTip('Society MultiRoblox');
+  tray.setContextMenu(trayMenu);
+  tray.on('click', showMainWindow);
+  tray.on('double-click', showMainWindow);
+}
+
 app.whenReady().then(async () => {
   if (process.platform === 'win32') app.setAppUserModelId('com.multiroblox.app');
   // Paint the UI immediately. The native-helper compile (first run only) and the
@@ -390,6 +421,7 @@ app.whenReady().then(async () => {
   // launched -- moving window creation ahead of this removes startup latency
   // without ever letting a launch race an unheld mutex.
   createWindow();
+  createTray();
   // Build/resolve the native helper once up front (compiles only if no prebuilt
   // exe shipped), then hold the mutex. startMutexHolder reuses the same memoized
   // result, so a launch fired before this resolves simply awaits the same promise.
@@ -397,6 +429,13 @@ app.whenReady().then(async () => {
   if (loadSettings().antiAfk) startAntiAfk();
 });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+app.on('before-quit', () => {
+  isQuiting = true;
+  if (tray) {
+    tray.destroy();
+    tray = null;
+  }
+});
 app.on('will-quit', () => { stopMutexHolder(); stopAntiAfk(); });
 
 ipcMain.on('window-minimize', () => win.minimize());
