@@ -76,6 +76,63 @@ async function init() {
   await continueInit();
 }
 
+async function loadCreditsProfile() {
+  const card = document.getElementById('credit-lead-dev');
+  const avatar = document.getElementById('credit-lead-av');
+  const nameEl = document.getElementById('credit-lead-name');
+  const handleEl = document.getElementById('credit-lead-handle');
+  if (!card || !avatar || !nameEl || !handleEl) return;
+
+  const fallbackName = 'cessievly';
+  const fallbackHandle = '@cessievly';
+  const fallbackAvatar = 'C';
+
+  try {
+    const response = await fetch('https://api.github.com/users/cessievly');
+    if (!response.ok) throw new Error('GitHub API request failed');
+    const data = await response.json();
+
+    const displayName = data.name && data.name.trim() ? data.name.trim() : fallbackName;
+    const username = data.login && data.login.trim() ? data.login.trim() : fallbackName;
+    const avatarUrl = data.avatar_url || '';
+
+    nameEl.textContent = displayName;
+    handleEl.innerHTML = `<span class="material-icons-round">alternate_email</span>@${username}`;
+    handleEl.onclick = () => api.openExternal(`https://github.com/${username}`);
+    handleEl.onkeydown = (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        api.openExternal(`https://github.com/${username}`);
+      }
+    };
+
+    if (avatarUrl) {
+      avatar.textContent = '';
+      avatar.style.background = 'transparent';
+      avatar.innerHTML = `<img src="${avatarUrl}" alt="" style="width:100%;height:100%;border-radius:50%;object-fit:cover">`;
+    } else {
+      avatar.textContent = fallbackAvatar;
+      avatar.style.background = 'linear-gradient(140deg,var(--ac),#7d5cf0)';
+      avatar.style.removeProperty('padding');
+      avatar.innerHTML = '';
+    }
+  } catch {
+    nameEl.textContent = fallbackName;
+    handleEl.innerHTML = `<span class="material-icons-round">alternate_email</span>${fallbackHandle}`;
+    handleEl.onclick = () => api.openExternal('https://github.com/cessievly');
+    handleEl.onkeydown = (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        api.openExternal('https://github.com/cessievly');
+      }
+    };
+    avatar.textContent = fallbackAvatar;
+    avatar.style.background = 'linear-gradient(140deg,var(--ac),#7d5cf0)';
+    avatar.style.removeProperty('padding');
+    avatar.innerHTML = '';
+  }
+}
+
 async function continueInit() {
   [accounts, settings, packages] = await Promise.all([api.loadAccounts(), api.loadSettings(), api.loadPackages()]);
   logEntry('info', 'system', `Loaded ${accounts.length} account${accounts.length === 1 ? '' : 's'} from storage`);
@@ -90,6 +147,7 @@ async function continueInit() {
   applySettings();
   refreshMultiStatus();
   detectRobloxVersion();
+  loadCreditsProfile();
   startRunningPoll();
   logEntry('info', 'system', 'MultiRoblox started', { version: 'v1', accounts: accounts.length, platform: navigator.platform });
   try { const k = localStorage.getItem('bloxgen_apikey'); if (k) { const el = document.getElementById('gen-apikey'); if (el) el.value = k; } } catch { }
