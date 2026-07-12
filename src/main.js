@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, net, session } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, net, session, Tray, Menu } = require('electron');
 
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36';
 app.commandLine.appendSwitch('user-agent', CHROME_UA);
@@ -372,6 +372,27 @@ function sendLog(level, category, message, meta) {
   } catch { }
 }
 
+function showMainWindow() {
+  if (!win || win.isDestroyed()) return;
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
+
+function createTray() {
+  if (tray) return;
+  tray = new Tray(path.join(__dirname, 'icon.ico'));
+  const trayMenu = Menu.buildFromTemplate([
+    { label: 'Open', click: showMainWindow },
+    { type: 'separator' },
+    { label: 'Exit', click: () => { isQuiting = true; app.quit(); } },
+  ]);
+  tray.setToolTip('Society MultiRoblox');
+  tray.setContextMenu(trayMenu);
+  tray.on('click', showMainWindow);
+  tray.on('double-click', showMainWindow);
+}
+
 function createWindow() {
   win = new BrowserWindow({
     width: 980, height: 760, minWidth: 945, minHeight: 755,
@@ -382,6 +403,12 @@ function createWindow() {
   });
   win.loadFile(path.join(__dirname, 'index.html'));
   win.once('ready-to-show', () => win.show());
+  win.on('close', (event) => {
+    if (!isQuiting) {
+      event.preventDefault();
+      win.hide();
+    }
+  });
 }
 app.whenReady().then(async () => {
   if (process.platform === 'win32') app.setAppUserModelId('com.multiroblox.app');
@@ -392,6 +419,7 @@ app.whenReady().then(async () => {
   // launched -- moving window creation ahead of this removes startup latency
   // without ever letting a launch race an unheld mutex.
   createWindow();
+  createTray();
   // Build/resolve the native helper once up front (compiles only if no prebuilt
   // exe shipped), then hold the mutex. startMutexHolder reuses the same memoized
   // result, so a launch fired before this resolves simply awaits the same promise.
@@ -399,11 +427,24 @@ app.whenReady().then(async () => {
   if (loadSettings().antiAfk) startAntiAfk();
 });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+app.on('before-quit', () => {
+  isQuiting = true;
+  if (tray) {
+    tray.destroy();
+    tray = null;
+  }
+});
 app.on('will-quit', () => { stopMutexHolder(); stopAntiAfk(); });
 
 ipcMain.on('window-minimize', () => win.minimize());
 ipcMain.on('window-maximize', () => win.isMaximized() ? win.unmaximize() : win.maximize());
-ipcMain.on('window-close', () => win.close());
+ipcMain.on('window-close', () => {
+  if (isQuiting) {
+    win.close();
+    return;
+  }
+  win.hide();
+});
 ipcMain.on('open-external', (_, url) => shell.openExternal(url));
 
 ipcMain.handle('settings:load', () => {
